@@ -1,54 +1,168 @@
 import expressAsyncHandler from "express-async-handler";
 import User from "../models/user.js";
-import Poll from "../models/pollModel.js"
+import { Poll } from "../models/pollModel.js"
 import { validationResult } from "express-validator";
+import csv from 'csv-parser';
+import fs from 'fs';
+import { processPollstersCsv } from "../util/processCsv.js";
+import { uploadToCloudinary } from "../util/uploadCloudinary.js";
+
+// const createPoll = expressAsyncHandler(async (req, res) => {
+//     try {
+//         const errors = validationResult(req);
+//         if (!errors.isEmpty()) {
+//             return res.status(400).json({ errors: errors.array() });
+//         }
+//         const {
+//             title,
+//             description,
+//             optionType,
+//             options,
+//             endDate,
+//             allowAnonymous = true,
+//             requireAuth = false,
+//             isPublic = true,
+//         } = req.body;
+
+//         if (new Date(endDate) <= new Date()) {
+//             throw new Error("End date must be in the future");
+//         }
+//         const poll = new Poll({
+//             title,
+//             description,
+//             creator: req.user._id,
+//             optionType,
+//             options: options.map(opt => ({ text: opt.text })),
+//             endDate: new Date(endDate),
+//             allowAnonymous,
+//             requireAuth,
+//             isPublic,
+//         });
+
+//         await poll.save();
+//         await poll.populate('creator', 'name avatar');
+//         await User.findByIdAndUpdate(req.user._id, {
+//             $inc: { pollsCreated: 1 }
+//         });
+
+//         res.status(201).json({
+//             message: 'Poll created successfully',
+//             poll
+//         });
+//     } catch (error) {
+//         throw new Error(error);
+//     }
+// });
 
 const createPoll = expressAsyncHandler(async (req, res) => {
+    console.log(req.files);
+
     try {
-        const errors = validationResult(req);
-        if (!errors.isEmpty()) {
-            return res.status(400).json({ errors: errors.array() });
-        }
         const {
             title,
             description,
-            optionType,
-            options,
+            pollType,
+            questions,
             endDate,
             allowAnonymous = true,
             requireAuth = false,
             isPublic = true,
+            tags = []
         } = req.body;
 
         if (new Date(endDate) <= new Date()) {
             throw new Error("End date must be in the future");
         }
+
+        // Get poll image from req.files
+        let pollImage = null;
+        const pollImageFile = req?.files?.find(f => f.fieldname === 'pollImage');
+        console.log({ image: pollImageFile })
+        if (pollImageFile) {
+            pollImage = await uploadToCloudinary(pollImageFile.path, 'poll-images');
+        }
+
+        // Process questions and handle image uploads
+        const parsedQuestions = JSON.parse(questions);
+        const processedQuestions = await Promise.all(
+            parsedQuestions.map(async (question, qIndex) => {
+                // Question image
+                let questionImage = null;
+                const questionImageFile = req?.files?.find(f => f.fieldname === `questionImage_${qIndex}`);
+                if (questionImageFile) {
+                    questionImage = await uploadToCloudinary(questionImageFile.path, 'question-images');
+                }
+
+                // Process options
+                const processedOptions = await Promise.all(
+                    question.options.map(async (option, oIndex) => {
+                        let optionImage = null;
+                        const optionImageFile = req?.files?.find(f => f.fieldname === `optionImage_${qIndex}_${oIndex}`);
+                        if (optionImageFile) {
+                            optionImage = await uploadToCloudinary(optionImageFile.path, 'option-images');
+                        }
+
+                        return {
+                            text: option.text,
+                            image: optionImage
+                        };
+                    })
+                );
+
+                return {
+                    title: question.title,
+                    description: question.description,
+                    type: question.type,
+                    required: question.required,
+                    options: processedOptions,
+                    order: qIndex,
+                    image: questionImage
+                };
+            })
+        );
+
+        // Create the poll
         const poll = new Poll({
             title,
             description,
+            image: pollImage,
             creator: req.user._id,
-            optionType,
-            options: options.map(opt => ({ text: opt.text })),
+            pollType,
+            questions: processedQuestions,
             endDate: new Date(endDate),
             allowAnonymous,
             requireAuth,
             isPublic,
+            tags
         });
 
         await poll.save();
         await poll.populate('creator', 'name avatar');
+
+        // Handle CSV upload for closed polls
+        const csvFile = req?.files?.find(f => f.fieldname === 'pollstersCsv');
+        if (pollType === 'closed' && csvFile) {
+            await processPollstersCsv(poll._id, csvFile, req.user._id);
+        }
+
+        // Update poll creation count
         await User.findByIdAndUpdate(req.user._id, {
             $inc: { pollsCreated: 1 }
         });
 
         res.status(201).json({
             message: 'Poll created successfully',
-            poll
+            poll: poll.getResults()
         });
     } catch (error) {
-        throw new Error(error);
+        console.error('Create poll error:', error);
+        res.status(500).json({
+            message: 'Error creating poll',
+            error: error.message
+        });
     }
 });
+
 
 const getPolls = expressAsyncHandler(async (req, res) => {
     try {

@@ -10,7 +10,7 @@ const voteSchema = new mongoose.Schema({
     voter: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
-        default: null // null for anonymous votes
+        default: null
     },
     voterIP: {
         type: String,
@@ -32,7 +32,6 @@ const voteSchema = new mongoose.Schema({
     timestamps: true
 });
 
-// Compound indexes for better performance and preventing duplicate votes
 voteSchema.index({ poll: 1, voter: 1 }, { sparse: true });
 voteSchema.index({ poll: 1, voterIP: 1 });
 voteSchema.index({ poll: 1, timestamp: -1 });
