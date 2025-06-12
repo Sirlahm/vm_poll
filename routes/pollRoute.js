@@ -8,10 +8,11 @@ const router = express.Router();
 
 router.post('/', authMiddleware, uploadMiddleware.any(), pollController.createPoll)
 router.get('/', authMiddleware, pollController.getPolls)
-router.get('/:shareCode', authMiddleware, pollController.getPollByShareCode)
+router.get('/:pollId/pollsters', authMiddleware, pollController.getPollsters)
 router.get('/:id/results', pollController.getResult)
 router.get('/my-polls', authMiddleware, pollController.getMyPolls)
-router.put('/', authMiddleware, pollController.updatePoll)
+router.get('/:id', authMiddleware, pollController.getPoll)
+router.put('/', authMiddleware, uploadMiddleware.any(), pollController.updatePoll)
 router.delete('/', authMiddleware, pollController.deletePoll)
 
 

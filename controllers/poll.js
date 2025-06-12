@@ -1,6 +1,6 @@
 import expressAsyncHandler from "express-async-handler";
 import User from "../models/user.js";
-import { Poll } from "../models/pollModel.js"
+import { Poll, Pollster, Vote } from "../models/pollModel.js"
 import { validationResult } from "express-validator";
 import csv from 'csv-parser';
 import fs from 'fs';
@@ -166,72 +166,29 @@ const createPoll = expressAsyncHandler(async (req, res) => {
 
 const getPolls = expressAsyncHandler(async (req, res) => {
     try {
-        const {
-            page = 1,
-            limit = 10,
-            search,
-            optionType,
-            sortBy = 'createdAt',
-            sortOrder = 'desc'
-        } = req.query;
-
-        const query = { isPublic: true, isActive: true };
-
-        // Search filter
-        if (search) {
-            query.$or = [
-                { title: { $regex: search, $options: 'i' } },
-                { description: { $regex: search, $options: 'i' } }
-            ];
-        }
-
-        // Option type filter
-        if (optionType) {
-            query.optionType = optionType;
-        }
-
-        const sortOptions = {};
-        sortOptions[sortBy] = sortOrder === 'desc' ? -1 : 1;
-
-        const polls = await Poll.find(query)
-            .populate('creator', 'username firstName lastName avatar')
-            .sort(sortOptions)
-            .limit(limit * 1)
-            .skip((page - 1) * limit)
-            .exec();
-
-        const total = await Poll.countDocuments(query);
-
-        res.json({
-            polls,
-            totalPages: Math.ceil(total / limit),
-            currentPage: page,
-            total
-        });
+        const polls = await Poll.find()
+            .populate('creator', 'name avatar')
+        res.json(polls);
     } catch (error) {
         throw new Error(error);
     }
 })
 
 
-const getPollByShareCode = expressAsyncHandler(async (req, res) => {
+const getPoll = expressAsyncHandler(async (req, res) => {
     try {
-        const { shareCode } = req.params;
-        const poll = await Poll.findOne({ shareCode })
+        const { id } = req.params;
+        const poll = await Poll.findById(id)
             .populate('creator', 'name avatar');
 
         if (!poll) {
             return res.status(404).json({ error: 'Poll not found' });
         }
 
-        // Check if poll is private and user doesn't have access
-        if (!poll.isPublic && (!req.user || poll.creator._id.toString() !== req.user._id.toString())) {
-            return res.status(403).json({ error: 'Access denied' });
-        }
-
-        // Increment view count
-        await Poll.findByIdAndUpdate(poll._id, { $inc: { viewCount: 1 } });
-
+        // // Check if poll is private and user doesn't have access
+        // if (!poll.isPublic && (!req.user || poll.creator._id.toString() !== req.user._id.toString())) {
+        //     return res.status(403).json({ error: 'Access denied' });
+        // }
         res.json({ poll });
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -240,33 +197,21 @@ const getPollByShareCode = expressAsyncHandler(async (req, res) => {
 
 const getMyPolls = expressAsyncHandler(async (req, res) => {
     try {
-        const { page = 1, limit = 10, status = 'all' } = req.query;
 
         const query = { creator: req.user._id };
-
-        if (status === 'active') {
-            query.isActive = true;
-            query.endDate = { $gt: new Date() };
-        } else if (status === 'expired') {
-            query.endDate = { $lte: new Date() };
-        } else if (status === 'inactive') {
-            query.isActive = false;
-        }
-
         const polls = await Poll.find(query)
-            .sort({ createdAt: -1 })
-            .limit(limit * 1)
-            .skip((page - 1) * limit)
-            .exec();
+        res.json(polls);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+})
 
-        const total = await Poll.countDocuments(query);
 
-        res.json({
-            polls,
-            totalPages: Math.ceil(total / limit),
-            currentPage: page,
-            total
-        });
+const getPollsters = expressAsyncHandler(async (req, res) => {
+    try {
+        const { pollId } = req.params
+        const pollsters = await Pollster.find({ poll: pollId })
+        res.json(pollsters);
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -274,48 +219,144 @@ const getMyPolls = expressAsyncHandler(async (req, res) => {
 
 const deletePoll = expressAsyncHandler(async (req, res) => {
     try {
-        const poll = await Poll.findById(req.params.id);
+        const { id } = req.params;
+        const poll = await Poll.findById(id);
+
         if (!poll) {
-            return res.status(404).json({ error: 'Poll not found' });
+            return res.status(404).json({ message: 'Poll not found' });
         }
 
-        // Check ownership
-        if (poll.creator.toString() !== req.user._id.toString()) {
-            return res.status(403).json({ error: 'Access denied' });
+        // Check creator authorization
+        if (String(poll.creator) !== String(req.user._id)) {
+            return res.status(403).json({ message: 'Unauthorized' });
         }
 
-        await Poll.findByIdAndDelete(req.params.id);
+        // Delete related pollsters and votes
+        await Pollster.deleteMany({ poll: id });
+        await Vote.deleteMany({ poll: id });
 
-        // Update user's poll count
+        // Delete the poll itself
+        await Poll.findByIdAndDelete(id);
+
+        // Update user poll count
         await User.findByIdAndUpdate(req.user._id, {
             $inc: { pollsCreated: -1 }
         });
 
         res.json({ message: 'Poll deleted successfully' });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        console.error('Delete poll error:', error);
+        res.status(500).json({
+            message: 'Error deleting poll',
+            error: error.message
+        });
     }
-})
+});
 
 const updatePoll = expressAsyncHandler(async (req, res) => {
     try {
-        const poll = await Poll.findById(req.params.id);
-        if (!poll) {
-            return res.status(404).json({ error: 'Poll not found' });
+        const { id } = req.params;
+        const existingPoll = await Poll.findById(id);
+
+        if (!existingPoll) {
+            return res.status(404).json({ message: 'Poll not found' });
         }
 
-        // Check ownership
-        if (poll.creator.toString() !== req.user._id.toString()) {
-            return res.status(403).json({ error: 'Access denied' });
+        // Ensure the logged-in user is the creator
+        if (String(existingPoll.creator) !== String(req.user._id)) {
+            return res.status(403).json({ message: 'Unauthorized' });
         }
 
-        await Poll.findByIdAndUpdate(req.params.id, { ...req.body }, { new: true, runValidators: true });
+        const {
+            title,
+            description,
+            pollType,
+            questions,
+            endDate,
+            allowAnonymous,
+            requireAuth,
+            isPublic,
+            tags
+        } = req.body;
 
-        res.json({ message: 'Poll updated successfully' });
+        if (endDate && new Date(endDate) <= new Date()) {
+            throw new Error("End date must be in the future");
+        }
+
+        // Upload new poll image if provided
+        const pollImageFile = req?.files?.find(f => f.fieldname === 'pollImage');
+        if (pollImageFile) {
+            const newImage = await uploadToCloudinary(pollImageFile.path, 'poll-images');
+            existingPoll.image = newImage;
+        }
+
+        // Parse and process updated questions
+        if (questions) {
+            const parsedQuestions = JSON.parse(questions);
+            const processedQuestions = await Promise.all(
+                parsedQuestions.map(async (question, qIndex) => {
+                    let questionImage = null;
+                    const questionImageFile = req?.files?.find(f => f.fieldname === `questionImage_${qIndex}`);
+                    if (questionImageFile) {
+                        questionImage = await uploadToCloudinary(questionImageFile.path, 'question-images');
+                    }
+
+                    const processedOptions = await Promise.all(
+                        question.options.map(async (option, oIndex) => {
+                            let optionImage = null;
+                            const optionImageFile = req?.files?.find(f => f.fieldname === `optionImage_${qIndex}_${oIndex}`);
+                            if (optionImageFile) {
+                                optionImage = await uploadToCloudinary(optionImageFile.path, 'option-images');
+                            }
+
+                            return {
+                                text: option.text,
+                                image: optionImage
+                            };
+                        })
+                    );
+
+                    return {
+                        title: question.title,
+                        description: question.description,
+                        type: question.type,
+                        required: question.required,
+                        options: processedOptions,
+                        order: qIndex,
+                        image: questionImage
+                    };
+                })
+            );
+
+            existingPoll.questions = processedQuestions;
+        }
+
+        // Update other fields if provided
+        if (title) existingPoll.title = title;
+        if (description) existingPoll.description = description;
+        if (pollType) existingPoll.pollType = pollType;
+        if (endDate) existingPoll.endDate = new Date(endDate);
+        if (allowAnonymous !== undefined) existingPoll.allowAnonymous = allowAnonymous;
+        if (requireAuth !== undefined) existingPoll.requireAuth = requireAuth;
+        if (isPublic !== undefined) existingPoll.isPublic = isPublic;
+        if (tags) existingPoll.tags = tags;
+
+        await existingPoll.save();
+        await existingPoll.populate('creator', 'name avatar');
+
+        res.json({
+            message: 'Poll updated successfully',
+            poll: existingPoll.getResults()
+        });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        console.error('Edit poll error:', error);
+        res.status(500).json({
+            message: 'Error editing poll',
+            error: error.message
+        });
     }
-})
+});
+
 
 const getResult = expressAsyncHandler(async (req, res) => {
     try {
@@ -334,9 +375,10 @@ const getResult = expressAsyncHandler(async (req, res) => {
 export default {
     createPoll,
     getPolls,
-    getPollByShareCode,
+    getPoll,
     getMyPolls,
     deletePoll,
     updatePoll,
-    getResult
+    getResult,
+    getPollsters
 };

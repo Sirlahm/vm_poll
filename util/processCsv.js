@@ -1,8 +1,7 @@
 import { Poll, Pollster } from "../models/pollModel.js";
 import fs from 'fs';
 import csv from 'csv-parser';
-
-
+import { notifyPollstersBatch } from "./emailService.js";
 
 export const processPollstersCsv = async (pollId, csvFile, uploadedBy) => {
     console.log({ path: csvFile.path })
@@ -80,7 +79,12 @@ export const processPollstersCsv = async (pollId, csvFile, uploadedBy) => {
                         },
                         $inc: { totalPollsters: insertedPollsters.length }
                     });
-
+                    // Send batch email notifications
+                    const poll = await Poll.findById(pollId).select("title");
+                    await notifyPollstersBatch(
+                        insertedPollsters.filter((p) => !!p.email),
+                        poll
+                    );
                     resolve(insertedPollsters.length);
                 } catch (error) {
                     reject(error);
