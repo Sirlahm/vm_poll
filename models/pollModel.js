@@ -208,19 +208,25 @@ const pollSchema = new mongoose.Schema({
             ref: 'User'
         }
     }],
-    tags: [{
-        type: String,
-        trim: true,
-        maxlength: 30
-    }],
     shareCode: {
         type: String,
         unique: true,
     },
-    viewCount: {
-        type: Number,
-        default: 0
-    }
+    isOn: {
+        type: Boolean,
+        default: false
+    },
+    status: {
+        type: String,
+        enum: ['building', 'scheduled', 'live', 'closed'],
+        default: 'building',
+        required: true
+    },
+    isPublish: {
+        type: Boolean,
+        default: false
+    },
+
 }, {
     timestamps: true
 });

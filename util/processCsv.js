@@ -4,7 +4,6 @@ import csv from 'csv-parser';
 import { notifyPollstersBatch } from "./emailService.js";
 
 export const processPollstersCsv = async (pollId, csvFile, uploadedBy) => {
-    console.log({ path: csvFile.path })
     return new Promise((resolve, reject) => {
         const pollsters = [];
         const errors = [];

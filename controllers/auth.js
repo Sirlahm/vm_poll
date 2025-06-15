@@ -2,11 +2,6 @@ import expressAsyncHandler from "express-async-handler";
 import User from "../models/user.js";
 import { generateToken } from "../config/jwtToken.js";
 import crypto from "crypto";
-// import {
-//   createForgotPasswordEmail,
-//   createOtpEmail,
-//   createWelcomeEmail,
-// } from "../util/emailService.js";
 
 const createUser = expressAsyncHandler(async (req, res) => {
     const { email } = req.body;
@@ -23,8 +18,6 @@ const createUser = expressAsyncHandler(async (req, res) => {
     }
 
     const newUser = await User.create(req.body);
-    //   await createWelcomeEmail(newUser);
-
     res.status(201).json(newUser);
 });
 

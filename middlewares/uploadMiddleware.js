@@ -21,7 +21,7 @@ const storage = multer.diskStorage({
 export const uploadMiddleware = multer({
     storage,
     fileFilter: (req, file, cb) => {
-        if (file.fieldname === 'pollImage' || file.fieldname.startsWith('questionImage_') || file.fieldname.startsWith('optionImage_')) {
+        if (file.fieldname === 'pollImage' || file.fieldname.startsWith('questionImage_') || file.fieldname.startsWith('optionImage_') || file.fieldname.startsWith('avatar') || file.fieldname.startsWith('logo')) {
             if (file.mimetype.startsWith('image/')) {
                 cb(null, true);
             } else {

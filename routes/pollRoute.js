@@ -10,10 +10,17 @@ router.post('/', authMiddleware, uploadMiddleware.any(), pollController.createPo
 router.get('/', authMiddleware, pollController.getPolls)
 router.get('/:pollId/pollsters', authMiddleware, pollController.getPollsters)
 router.get('/:id/results', pollController.getResult)
+router.put('/:id/publish', pollController.publishPoll)
+router.put('/:id/toggle-status', pollController.togglePollStatus)
 router.get('/my-polls', authMiddleware, pollController.getMyPolls)
 router.get('/:id', authMiddleware, pollController.getPoll)
-router.put('/', authMiddleware, uploadMiddleware.any(), pollController.updatePoll)
-router.delete('/', authMiddleware, pollController.deletePoll)
+router.post('/:id/import-pollsters', authMiddleware, uploadMiddleware.single('pollstersCsv'), pollController.importPollsters)
+router.delete('/:id/reset', authMiddleware, pollController.resetPoll)
+router.post('/:id/duplicate', authMiddleware, pollController.duplicatePoll)
+router.get('/:id/export', pollController.exportPollAsCSV)
+
+router.put('/:id', authMiddleware, uploadMiddleware.any(), pollController.updatePoll)
+router.delete('/:id', authMiddleware, pollController.deletePoll)
 
 
 

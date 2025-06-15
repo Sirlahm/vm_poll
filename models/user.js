@@ -25,8 +25,12 @@ const userSchema = new mongoose.Schema(
         //     enum: ["institution", "organization"],
         // },
         avatar: {
-            type: String,
-            default: ''
+            url: String,
+            publicId: String
+        },
+        logo: {
+            url: String,
+            publicId: String
         },
         pollsCreated: {
             type: Number,

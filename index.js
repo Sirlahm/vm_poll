@@ -6,6 +6,8 @@ import { errorHandler, notFound } from "./middlewares/errorHandler.js";
 import authRouter from "./routes/auth.js";
 import pollRouter from "./routes/pollRoute.js"
 import voteRouter from "./routes/voteRoute.js"
+import userRouter from "./routes/user.js"
+
 import { createServer } from "http";
 import { initSocket } from "./config/socketConnection.js";
 import cors from "cors";
@@ -40,7 +42,7 @@ app.get("/", (req, res) => {
 app.use("/api/auth", authRouter);
 app.use("/api/poll", pollRouter);
 app.use("/api/vote", voteRouter);
-
+app.use("/api/user", userRouter);
 
 app.use(notFound);
 app.use(errorHandler);
