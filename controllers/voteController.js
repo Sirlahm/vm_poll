@@ -9,7 +9,7 @@ import { validationResult } from "express-validator";
 const submitVote = expressAsyncHandler(async (req, res) => {
 
     const { pollId } = req.params;
-    const { responses, voteToken } = req.body;
+    const { responses, voteToken, voterName } = req.body;
 
     const poll = await Poll.findById(pollId);
     if (!poll) {
@@ -25,6 +25,10 @@ const submitVote = expressAsyncHandler(async (req, res) => {
         res.status(401);
         throw new Error('Poll is not live');
     }
+
+    if (poll.requireVoterName && !voterName) {
+        throw new Error('Participant name is required for this poll');
+    } 
 
     let voter = null;
     let pollster = null;
@@ -86,16 +90,37 @@ const submitVote = expressAsyncHandler(async (req, res) => {
 
         // Validate option IDs
         const validatedOptions = [];
-        for (const selectedOption of response.selectedOptions) {
-            const option = question.options.id(selectedOption.optionId);
-            if (!option) {
-                throw new Error('Invalid option ID');
+        // for (const selectedOption of response.selectedOptions) {
+        //     const option = question.options.id(selectedOption.optionId);
+        //     if (!option) {
+        //         throw new Error('Invalid option ID');
 
+        //     }
+        //     validatedOptions.push({
+        //         optionId: selectedOption.optionId,
+        //         optionText: option.text
+        //     });
+        // }
+        for (const selectedOption of response.selectedOptions) {
+            if (selectedOption.optionId) {
+                const option = question.options.id(selectedOption.optionId);
+                if (!option) {
+                    throw new Error('Invalid option ID');
+                }
+                validatedOptions.push({
+                    optionId: selectedOption.optionId,
+                    optionText: option.text,
+                    isCustom: false
+                });
+            } else if (poll.showOtherOption && selectedOption.optionText?.trim()) {
+                validatedOptions.push({
+                    optionId: null,
+                    optionText: selectedOption.optionText.trim(),
+                    isCustom: true
+                });
+            } else {
+                throw new Error('Invalid custom option input or not allowed');
             }
-            validatedOptions.push({
-                optionId: selectedOption.optionId,
-                optionText: option.text
-            });
         }
 
         validatedResponses.push({
@@ -111,17 +136,28 @@ const submitVote = expressAsyncHandler(async (req, res) => {
         pollster: pollster?._id,
         voterIP,
         responses: validatedResponses,
-        userAgent: req.get('User-Agent')
+        userAgent: req.get('User-Agent'),
+        voterName: poll.requireVoterName ? voterName : undefined,
+
     });
 
     await vote.save();
 
     // Update vote counts
+    // for (const response of validatedResponses) {
+    //     const question = poll.questions.id(response.questionId);
+    //     for (const selectedOption of response.selectedOptions) {
+    //         const option = question.options.id(selectedOption.optionId);
+    //         option.votes += 1;
+    //     }
+    // }
     for (const response of validatedResponses) {
         const question = poll.questions.id(response.questionId);
         for (const selectedOption of response.selectedOptions) {
-            const option = question.options.id(selectedOption.optionId);
-            option.votes += 1;
+            if (!selectedOption.isCustom) {
+                const option = question.options.id(selectedOption.optionId);
+                option.votes += 1;
+            }
         }
     }
 

@@ -226,6 +226,14 @@ const pollSchema = new mongoose.Schema({
         type: Boolean,
         default: false
     },
+    requireVoterName: {
+        type: Boolean,
+        default: false
+    },
+    showOtherOption: {
+        type: Boolean,
+        default: false
+    },
 
 }, {
     timestamps: true
@@ -248,6 +256,10 @@ const voteSchema = new mongoose.Schema({
         ref: 'Pollster',
         default: null
     },
+    voterName: { 
+        type: String,
+        trim: true
+    },
     voterIP: {
         type: String,
         required: function () {
@@ -262,9 +274,12 @@ const voteSchema = new mongoose.Schema({
         selectedOptions: [{
             optionId: {
                 type: mongoose.Schema.Types.ObjectId,
-                required: true
             },
-            optionText: String
+            optionText: String,
+            isCustom: {
+                type: Boolean,
+                default: false
+            }
         }]
     }],
     userAgent: String,
@@ -306,8 +321,47 @@ pollSchema.methods.isExpired = function () {
 };
 
 // Calculate poll results
-pollSchema.methods.getResults = function () {
-    const questionResults = this.questions.map(question => {
+// pollSchema.methods.getResults = function () {
+//     const questionResults = this.questions.map(question => {
+//         const questionTotalVotes = question.options.reduce((sum, option) => sum + option.votes, 0);
+
+//         const optionResults = question.options.map(option => ({
+//             _id: option._id,
+//             text: option.text,
+//             image: option.image,
+//             votes: option.votes,
+//             percentage: questionTotalVotes > 0 ? Math.round((option.votes / questionTotalVotes) * 100) : 0
+//         }));
+
+//         return {
+//             _id: question._id,
+//             title: question.title,
+//             description: question.description,
+//             type: question.type,
+//             totalVotes: questionTotalVotes,
+//             options: optionResults
+//         };
+//     });
+
+//     return {
+//         pollId: this._id,
+//         title: this.title,
+//         description: this.description,
+//         image: this.image,
+//         pollType: this.pollType,
+//         totalVotes: this.totalVotes,
+//         uniqueVoters: this.uniqueVoters,
+//         totalPollsters: this.totalPollsters,
+//         questions: questionResults,
+//         isExpired: this.isExpired(),
+//         endDate: this.endDate
+//     };
+// };
+
+pollSchema.methods.getResults = async function () {
+    const questionResults = [];
+
+    for (const question of this.questions) {
         const questionTotalVotes = question.options.reduce((sum, option) => sum + option.votes, 0);
 
         const optionResults = question.options.map(option => ({
@@ -315,18 +369,46 @@ pollSchema.methods.getResults = function () {
             text: option.text,
             image: option.image,
             votes: option.votes,
-            percentage: questionTotalVotes > 0 ? Math.round((option.votes / questionTotalVotes) * 100) : 0
+            percentage: questionTotalVotes > 0 ? Math.round((option.votes / questionTotalVotes) * 100) : 0,
+            isCustom: false
         }));
 
-        return {
+        if (this.showOtherOption) {
+            const customVotes = await Vote.aggregate([
+                { $match: { poll: this._id } },
+                { $unwind: '$responses' },
+                { $match: { 'responses.questionId': question._id } },
+                { $unwind: '$responses.selectedOptions' },
+                { $match: { 'responses.selectedOptions.isCustom': true } },
+                {
+                    $group: {
+                        _id: '$responses.selectedOptions.optionText',
+                        votes: { $sum: 1 }
+                    }
+                }
+            ]);
+
+            customVotes.forEach(c => {
+                optionResults.push({
+                    _id: null,
+                    text: c._id,
+                    image: null,
+                    votes: c.votes,
+                    percentage: questionTotalVotes > 0 ? Math.round((c.votes / questionTotalVotes) * 100) : 0,
+                    isCustom: true
+                });
+            });
+        }
+
+        questionResults.push({
             _id: question._id,
             title: question.title,
             description: question.description,
             type: question.type,
             totalVotes: questionTotalVotes,
             options: optionResults
-        };
-    });
+        });
+    }
 
     return {
         pollId: this._id,
@@ -343,10 +425,20 @@ pollSchema.methods.getResults = function () {
     };
 };
 
+
 // Generate vote token for closed polls
-pollsterSchema.pre('save', function (next) {
-    if (!this.voteToken && this.isNew) {
-        this.voteToken = generateVoteToken();
+pollsterSchema.pre('save',  async function  (next) {
+     if (!this.voteToken && this.isNew) {
+        try {
+            const Poll = mongoose.model('Poll'); // Get the Poll model
+            const poll = await Poll.findById(this.poll);
+
+            if (poll && poll.pollType === 'closed') {
+                this.voteToken = generateVoteToken();
+            }
+        } catch (err) {
+            return next(err);
+        }
     }
     next();
 });

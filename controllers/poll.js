@@ -189,6 +189,90 @@ const deletePoll = expressAsyncHandler(async (req, res) => {
     }
 });
 
+// const updatePoll = expressAsyncHandler(async (req, res) => {
+//     try {
+//         const { id } = req.params;
+
+//         const existingPoll = await Poll.findById(id);
+//         if (!existingPoll) {
+//             throw new Error('Poll not found');
+//         }
+//         const updateData = {
+//             ...req.body,
+//         };
+
+//         // Convert endDate to a Date object if it's present
+//         if (req.body.endDate) {
+//             const newEndDate = new Date(req.body.endDate);
+//             if (newEndDate <= new Date()) {
+//                 throw new Error("End date must be in the future");
+//             }
+//             updateData.endDate = newEndDate;
+//         }
+
+//         // Handle poll image upload
+//         const pollImageFile = req?.files?.find(f => f.fieldname === 'pollImage');
+//         if (pollImageFile) {
+//             const pollImage = await uploadToCloudinary(pollImageFile.path, 'poll-images');
+//             updateData.image = pollImage;
+//         }
+
+//         // Handle question updates (with image uploads)
+//         if (req.body.questions) {
+//             const parsedQuestions = JSON.parse(req.body.questions);
+//             const processedQuestions = await Promise.all(
+//                 parsedQuestions.map(async (question, qIndex) => {
+//                     let questionImage = null;
+//                     const questionImageFile = req?.files?.find(f => f.fieldname === `questionImage_${qIndex}`);
+//                     if (questionImageFile) {
+//                         questionImage = await uploadToCloudinary(questionImageFile.path, 'question-images');
+//                     }
+
+//                     const processedOptions = await Promise.all(
+//                         question.options.map(async (option, oIndex) => {
+//                             let optionImage = null;
+//                             const optionImageFile = req?.files?.find(f => f.fieldname === `optionImage_${qIndex}_${oIndex}`);
+//                             if (optionImageFile) {
+//                                 optionImage = await uploadToCloudinary(optionImageFile.path, 'option-images');
+//                             }
+
+//                             return {
+//                                 text: option.text,
+//                                 image: optionImage,
+//                             };
+//                         })
+//                     );
+
+//                     return {
+//                         title: question.title,
+//                         description: question.description,
+//                         type: question.type,
+//                         required: question.required,
+//                         options: processedOptions,
+//                         order: qIndex,
+//                         image: questionImage,
+//                     };
+//                 })
+//             );
+
+//             updateData.questions = processedQuestions;
+//         }
+
+//         const updatedPoll = await Poll.findByIdAndUpdate(id, updateData, {
+//             new: true,
+//         }).populate('creator', 'name avatar');
+
+//         res.status(200).json({
+//             message: 'Poll updated successfully',
+//             poll: updatedPoll.getResults(),
+//         });
+
+//     } catch (error) {
+//         throw new Error(error);
+
+//     }
+// });
+
 const updatePoll = expressAsyncHandler(async (req, res) => {
     try {
         const { id } = req.params;
@@ -197,6 +281,7 @@ const updatePoll = expressAsyncHandler(async (req, res) => {
         if (!existingPoll) {
             throw new Error('Poll not found');
         }
+
         const updateData = {
             ...req.body,
         };
@@ -217,12 +302,17 @@ const updatePoll = expressAsyncHandler(async (req, res) => {
             updateData.image = pollImage;
         }
 
-        // Handle question updates (with image uploads)
+        // Handle question updates (with image uploads and preservation)
         if (req.body.questions) {
             const parsedQuestions = JSON.parse(req.body.questions);
+            const existingQuestions = existingPoll.questions || [];
+
             const processedQuestions = await Promise.all(
                 parsedQuestions.map(async (question, qIndex) => {
-                    let questionImage = null;
+                    const existingQuestion = existingQuestions[qIndex];
+
+                    // Preserve question image if not updated
+                    let questionImage = existingQuestion?.image || null;
                     const questionImageFile = req?.files?.find(f => f.fieldname === `questionImage_${qIndex}`);
                     if (questionImageFile) {
                         questionImage = await uploadToCloudinary(questionImageFile.path, 'question-images');
@@ -230,7 +320,10 @@ const updatePoll = expressAsyncHandler(async (req, res) => {
 
                     const processedOptions = await Promise.all(
                         question.options.map(async (option, oIndex) => {
-                            let optionImage = null;
+                            const existingOption = existingQuestion?.options?.[oIndex];
+
+                            // Preserve option image if not updated
+                            let optionImage = existingOption?.image || null;
                             const optionImageFile = req?.files?.find(f => f.fieldname === `optionImage_${qIndex}_${oIndex}`);
                             if (optionImageFile) {
                                 optionImage = await uploadToCloudinary(optionImageFile.path, 'option-images');
@@ -264,15 +357,13 @@ const updatePoll = expressAsyncHandler(async (req, res) => {
 
         res.status(200).json({
             message: 'Poll updated successfully',
-            poll: updatedPoll.getResults(),
+            poll: await updatedPoll.getResults(),
         });
 
     } catch (error) {
-        throw new Error(error);
-
+        throw new Error(error.message || 'Poll update failed');
     }
 });
-
 
 
 const getResult = expressAsyncHandler(async (req, res) => {
@@ -303,9 +394,8 @@ const publishPoll = expressAsyncHandler(async (req, res) => {
 
         }
         poll.isPublish = true
-        if (!poll.isOn) {
-            poll.status = "scheduled"
-        }
+        poll.status = "live"
+        poll.isOn =  true
         poll.save()
         res.json({ poll: poll, message: "Poll Published Successfully" });
     } catch (error) {
@@ -324,7 +414,7 @@ const togglePollStatus = expressAsyncHandler(async (req, res) => {
             throw new Error('Poll not found');
         }
         if (!poll.isPublish) {
-            throw new Error('Publish Poll before you start poll');
+            throw new Error('Publish Poll before you start or close poll');
 
         }
         if (status) {
