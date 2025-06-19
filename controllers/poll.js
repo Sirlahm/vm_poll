@@ -321,10 +321,12 @@ const updatePoll = expressAsyncHandler(async (req, res) => {
                     const processedOptions = await Promise.all(
                         question.options.map(async (option, oIndex) => {
                             const existingOption = existingQuestion?.options?.[oIndex];
-
+                            
                             // Preserve option image if not updated
                             let optionImage = existingOption?.image || null;
+
                             const optionImageFile = req?.files?.find(f => f.fieldname === `optionImage_${qIndex}_${oIndex}`);
+                            
                             if (optionImageFile) {
                                 optionImage = await uploadToCloudinary(optionImageFile.path, 'option-images');
                             }
@@ -420,7 +422,7 @@ const togglePollStatus = expressAsyncHandler(async (req, res) => {
         if (status) {
             poll.status = "live"
             poll.isOn = true
-        } else {
+        } else  {
             poll.status = "closed"
             poll.isOn = false
 
@@ -513,7 +515,9 @@ const duplicatePoll = expressAsyncHandler(async (req, res) => {
 
     await duplicatedPoll.save();
     await duplicatedPoll.populate('creator', 'name avatar');
-
+    await User.findByIdAndUpdate(req.user._id, {
+        $inc: { pollsCreated: 1 }
+    });
     res.status(201).json({
         message: 'Poll duplicated successfully',
         poll: duplicatedPoll

@@ -80,10 +80,10 @@ export const processPollstersCsv = async (pollId, csvFile, uploadedBy) => {
                     });
                     // Send batch email notifications
                     const poll = await Poll.findById(pollId).select("title");
-                    await notifyPollstersBatch(
-                        insertedPollsters.filter((p) => !!p.email),
-                        poll
-                    );
+                    // await notifyPollstersBatch(
+                    //     insertedPollsters.filter((p) => !!p.email),
+                    //     poll
+                    // );
                     resolve(insertedPollsters.length);
                 } catch (error) {
                     reject(error);

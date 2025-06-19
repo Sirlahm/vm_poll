@@ -2,6 +2,7 @@ import expressAsyncHandler from "express-async-handler";
 import User from "../models/user.js";
 import { generateToken } from "../config/jwtToken.js";
 import crypto from "crypto";
+import { createForgotPasswordEmail } from "../util/emailService.js";
 
 const createUser = expressAsyncHandler(async (req, res) => {
     const { email } = req.body;
@@ -73,7 +74,7 @@ export const forgotPasswordToken = expressAsyncHandler(async (req, res) => {
     try {
         const token = await user.createPasswordResetToken();
         await user.save();
-        // await createForgotPasswordEmail(user, token);
+        await createForgotPasswordEmail(user, token);
         res.json(token);
     } catch (error) {
         throw new Error(error);
@@ -96,6 +97,7 @@ export const resetPassword = expressAsyncHandler(async (req, res) => {
 });
 
 export const changePassword = expressAsyncHandler(async (req, res) => {
+    console.log({ru: req.user})
     const { currentPassword, newPassword } = req.body;
     if (!currentPassword || !newPassword) {
         res.status(400);

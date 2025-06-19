@@ -47,3 +47,32 @@ export const notifyPollstersBatch = async (pollsters, poll) => {
         }
     }
 };
+
+
+export const createForgotPasswordEmail = async (user, token) => {
+    const resetLink = `${process.env.FRONTEND_URL}/reset-password?token=${token}`;
+
+    const email = {
+        From: process.env.POSTMARK_SENDER_EMAIL,
+        To: user.email,
+        Subject: "Reset your password",
+        HtmlBody: `
+            <h2>Password Reset Request</h2>
+            <p>Hello ${user.name || "there"},</p>
+            <p>We received a request to reset your password. Click the button below to proceed:</p>
+            <a href="${resetLink}" style="display:inline-block;padding:10px 20px;background:#DC3545;color:white;text-decoration:none;border-radius:5px;">Reset Password</a>
+            <p>If the button doesn't work, copy and paste this link into your browser:</p>
+            <p><a href="${resetLink}">${resetLink}</a></p>
+            <p>If you did not request this, you can safely ignore this email.</p>
+            <p>Thanks,<br/>The Team</p>
+        `,
+    };
+
+    try {
+        await client.sendEmail(email);
+        console.log(`✅ Password reset email sent to ${user.email}`);
+    } catch (error) {
+        console.error(`❌ Failed to send password reset email to ${user.email}:`, error);
+        throw error;
+    }
+};

@@ -321,47 +321,8 @@ pollSchema.methods.isExpired = function () {
 };
 
 // Calculate poll results
-// pollSchema.methods.getResults = function () {
-//     const questionResults = this.questions.map(question => {
-//         const questionTotalVotes = question.options.reduce((sum, option) => sum + option.votes, 0);
-
-//         const optionResults = question.options.map(option => ({
-//             _id: option._id,
-//             text: option.text,
-//             image: option.image,
-//             votes: option.votes,
-//             percentage: questionTotalVotes > 0 ? Math.round((option.votes / questionTotalVotes) * 100) : 0
-//         }));
-
-//         return {
-//             _id: question._id,
-//             title: question.title,
-//             description: question.description,
-//             type: question.type,
-//             totalVotes: questionTotalVotes,
-//             options: optionResults
-//         };
-//     });
-
-//     return {
-//         pollId: this._id,
-//         title: this.title,
-//         description: this.description,
-//         image: this.image,
-//         pollType: this.pollType,
-//         totalVotes: this.totalVotes,
-//         uniqueVoters: this.uniqueVoters,
-//         totalPollsters: this.totalPollsters,
-//         questions: questionResults,
-//         isExpired: this.isExpired(),
-//         endDate: this.endDate
-//     };
-// };
-
-pollSchema.methods.getResults = async function () {
-    const questionResults = [];
-
-    for (const question of this.questions) {
+pollSchema.methods.getResults = function () {
+    const questionResults = this.questions.map(question => {
         const questionTotalVotes = question.options.reduce((sum, option) => sum + option.votes, 0);
 
         const optionResults = question.options.map(option => ({
@@ -369,46 +330,18 @@ pollSchema.methods.getResults = async function () {
             text: option.text,
             image: option.image,
             votes: option.votes,
-            percentage: questionTotalVotes > 0 ? Math.round((option.votes / questionTotalVotes) * 100) : 0,
-            isCustom: false
+            percentage: questionTotalVotes > 0 ? Math.round((option.votes / questionTotalVotes) * 100) : 0
         }));
 
-        if (this.showOtherOption) {
-            const customVotes = await Vote.aggregate([
-                { $match: { poll: this._id } },
-                { $unwind: '$responses' },
-                { $match: { 'responses.questionId': question._id } },
-                { $unwind: '$responses.selectedOptions' },
-                { $match: { 'responses.selectedOptions.isCustom': true } },
-                {
-                    $group: {
-                        _id: '$responses.selectedOptions.optionText',
-                        votes: { $sum: 1 }
-                    }
-                }
-            ]);
-
-            customVotes.forEach(c => {
-                optionResults.push({
-                    _id: null,
-                    text: c._id,
-                    image: null,
-                    votes: c.votes,
-                    percentage: questionTotalVotes > 0 ? Math.round((c.votes / questionTotalVotes) * 100) : 0,
-                    isCustom: true
-                });
-            });
-        }
-
-        questionResults.push({
+        return {
             _id: question._id,
             title: question.title,
             description: question.description,
             type: question.type,
             totalVotes: questionTotalVotes,
             options: optionResults
-        });
-    }
+        };
+    });
 
     return {
         pollId: this._id,
