@@ -19,11 +19,11 @@ const userSchema = new mongoose.Schema(
             type: String,
             required: true,
         },
-        // accountType: {
-        //     type: String,
-        //     required: true,
-        //     enum: ["institution", "organization"],
-        // },
+        accountType: {
+            type: String,
+            required: true,
+            enum: ["personal", "organisation"],
+        },
         avatar: {
             url: String,
             publicId: String
@@ -36,6 +36,11 @@ const userSchema = new mongoose.Schema(
             type: Number,
             default: 0
         },
+        companyType: String,
+        companyName: String,
+        jobTitle: String,
+        numberofPollsPerYear: Number,
+        numberofVoters: Number,
         passwordResetToken: String,
         passwordResetExpires: Date,
         logo: String,
@@ -46,8 +51,12 @@ const userSchema = new mongoose.Schema(
             default: false,
         },
         lastLogin: { type: Date },
-        otp: String,
-        otpExpires: Date,
+        twoFactorToken: String,
+        twoFactorTokenExpires: Date,
+        isPendingTwoFactor: {
+            type: Boolean,
+            default: false,
+        },
     },
     {
         timestamps: true,
@@ -78,8 +87,28 @@ userSchema.methods.createPasswordResetToken = async function () {
         .createHash("sha256")
         .update(resettoken)
         .digest("hex");
-    this.passwordResetExpires = Date.now() + 60 * 60 * 1000; // 60 minutes
+    this.passwordResetExpires = Date.now() + 60 * 60 * 1000; 
     return resettoken;
+};
+
+userSchema.methods.generateTwoFactorToken = function () {
+    const token = Math.floor(100000 + Math.random() * 900000).toString();
+    this.twoFactorToken = token;
+    this.twoFactorTokenExpires = Date.now() + 10 * 60 * 1000; 
+    this.isPendingTwoFactor = true;
+    return token;
+};
+
+userSchema.methods.verifyTwoFactorToken = function (token) {
+    return this.twoFactorToken === token && 
+           this.twoFactorTokenExpires > Date.now() && 
+           this.isPendingTwoFactor;
+};
+
+userSchema.methods.clearTwoFactorToken = function () {
+    this.twoFactorToken = undefined;
+    this.twoFactorTokenExpires = undefined;
+    this.isPendingTwoFactor = false;
 };
 
 export default mongoose.model("User", userSchema);

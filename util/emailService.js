@@ -76,3 +76,33 @@ export const createForgotPasswordEmail = async (user, token) => {
         throw error;
     }
 };
+
+export const sendTwoFactorToken = async (user, token) => {
+    const email = {
+        From: process.env.POSTMARK_SENDER_EMAIL,
+        To: user.email,
+        Subject: "Your 2FA Verification Code",
+        HtmlBody: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                <h2 style="color: #333;">Your 2FA Verification Code</h2>
+                <p>Hello ${user.name || "there"},</p>
+                <p>Your verification code is:</p>
+                <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; text-align: center; margin: 20px 0;">
+                    <h1 style="color: #007BFF; font-size: 32px; margin: 0; letter-spacing: 4px;">${token}</h1>
+                </div>
+                <p><strong>This code will expire in 10 minutes.</strong></p>
+                <p>If you did not request this code, please ignore this email.</p>
+                <p>Thanks,<br/>The Team</p>
+            </div>
+        `,
+        TextBody: `Your 2FA verification code is: ${token}\n\nThis code will expire in 10 minutes.\n\nIf you did not request this code, please ignore this email.\n\nThanks,\nThe Team`
+    };
+
+    try {
+        await client.sendEmail(email);
+        console.log(`✅ 2FA token sent to ${user.email}`);
+    } catch (error) {
+        console.error(`❌ Failed to send 2FA token to ${user.email}:`, error);
+        throw error;
+    }
+};
